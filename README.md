@@ -27,7 +27,7 @@ still opens KOReader's menu (also while the toolbar is open).
 | ← Back to Home / My Books | go back where you opened the book from |
 | ☼ | Kobo's Light panel (with KoboUI), or KOReader's frontlight dialog |
 | Aa | KOReader's font & layout panel |
-| ılı | reading statistics for this book |
+| ılı | Kobo's stats panel under the toolbar: this chapter (% read, time left), next chapter (time to read), this book (chapter chart, time left). Tap < > or swipe it for "Last 7 days". Tap ılı again to hide it; long-press ılı for KOReader's book statistics. Times use the Reading statistics plugin (pages without it). |
 | ⚙ | KOReader's menu |
 | ••• | a menu of actions you choose (bookmark, go to page, book details…) |
 | PAGE X OF Y | switch: page / pages left in chapter / time left in chapter / time left in book / % read |

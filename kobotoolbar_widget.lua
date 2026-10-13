@@ -34,6 +34,7 @@ local T = require("ffi/util").template
 local _ = require("gettext")
 local N_ = _.ngettext
 local Fonts = require("kobotoolbar_fonts")
+local Stats = require("kobotoolbar_stats")
 local Screen = Device.screen
 
 local BLACK = Blitbuffer.COLOR_BLACK
@@ -349,6 +350,8 @@ function KoboToolbarWidget:init()
 
     self.top_dimen = Geom:new{ x = 0, y = 0, w = self.screen_w, h = self.top_h }
     self.bottom_dimen = Geom:new{ x = 0, y = self.screen_h - self.bottom_h, w = self.screen_w, h = self.bottom_h }
+    -- Kobo's reading-stats panel (ılı button), hanging under the toolbar
+    self.stats_dimen = Geom:new{ x = 0, y = self.top_h, w = self.screen_w, h = Stats.height() }
     self.rects = {}
 end
 
@@ -381,6 +384,16 @@ end
 function KoboToolbarWidget:paintTo(bb, x, y)
     self.rects = {}
     self:paintTop(bb)
+    if self.stats_open then
+        local ok, res = pcall(Stats.paint, bb, self.ui, self:currentPage(), self.top_h, self:statsView())
+        if ok then
+            self.stats_rects = res
+        else
+            logger.warn("kobotoolbar: stats panel failed:", res)
+            self.stats_rects = {}
+        end
+        return
+    end
     self:paintBottom(bb)
     self:paintPill(bb)
 end
@@ -658,6 +671,10 @@ end
 --- Repaint the bottom (page changed, slider moved…). The pill floats over the
 --- page, so when it goes away the reader repaints underneath it.
 function KoboToolbarWidget:refresh(refresh_type)
+    if self.stats_open then
+        UIManager:setDirty(self, refresh_type or "ui", self.stats_dimen)
+        return
+    end
     local old_pill = self.rects.pill
     local new_pill = self:pillRect()
     local region = self.bottom_dimen
@@ -676,6 +693,7 @@ function KoboToolbarWidget:onCloseWidget()
     local top, bottom = self.top_dimen, self.bottom_dimen
     local pill = self.rects.pill
     if pill then bottom = bottom:combine(pill) end
+    if self.stats_open then top = top:combine(self.stats_dimen) end
     UIManager:setDirty(nil, function() return "ui", top end)
     UIManager:setDirty(nil, function() return "ui", bottom end)
     if self.plugin then self.plugin:onToolbarClosed(self) end
@@ -722,6 +740,10 @@ end
 function KoboToolbarWidget:onButton(b, rect)
     local id = b.id
     local ui = self.ui
+    if self.stats_open and id ~= "stats" then
+        -- another button: the stats panel goes away first
+        self:showStats(false)
+    end
     if b.custom then
         local action = b.action
         if type(action) == "table" and next(action) ~= nil then
@@ -737,7 +759,11 @@ function KoboToolbarWidget:onButton(b, rect)
     elseif id == "font" then
         self:closeAnd(function() ui:handleEvent(Event:new("ShowConfigMenu")) end)
     elseif id == "stats" then
-        self:closeAnd(function() Dispatcher:execute({ book_statistics = true }) end)
+        if self.plugin.settings.stats_button == "koreader" then
+            self:openKOReaderStats()
+        else
+            self:showStats(not self.stats_open)
+        end
     elseif id == "settings" then
         self:openMainMenu()
     elseif id == "more" then
@@ -775,6 +801,51 @@ function KoboToolbarWidget:openLightPanel(rect)
         local ui = self.ui
         self:closeAnd(function() ui:handleEvent(Event:new("ShowFlDialog")) end)
     end
+end
+
+function KoboToolbarWidget:openKOReaderStats()
+    self:closeAnd(function() Dispatcher:execute({ book_statistics = true }) end)
+end
+
+function KoboToolbarWidget:statsView()
+    local v = self.plugin.settings.stats_view
+    for _i, k in ipairs(Stats.VIEWS) do if k == v then return v end end
+    return Stats.VIEWS[1]
+end
+
+--- Shows / hides Kobo's stats panel under the toolbar. While it's shown, the
+--- bottom panel is hidden (the page shows there), like on Kobo.
+function KoboToolbarWidget:showStats(open)
+    if (self.stats_open and true or false) == (open and true or false) then return end
+    local bottom = self.bottom_dimen
+    if self.rects.pill then bottom = bottom:combine(self.rects.pill) end
+    self.stats_open = open and true or nil
+    self.open_button = open and "stats" or nil
+    self.preview_page = nil
+    self.dragging = false
+    if open then
+        -- the page shows again where the bottom panel was
+        UIManager:setDirty(self.ui, "ui", bottom)
+        UIManager:setDirty(self, "ui", self.top_dimen:combine(self.stats_dimen))
+    else
+        UIManager:setDirty(self.ui, "ui", self.stats_dimen)
+        UIManager:setDirty(self, "ui", self.top_dimen)
+        local new_bottom = self.bottom_dimen
+        local pill = self:pillRect()
+        if pill then new_bottom = new_bottom:combine(pill) end
+        UIManager:setDirty(self, "ui", new_bottom)
+    end
+end
+
+function KoboToolbarWidget:cycleStatsView(dir)
+    local views = Stats.VIEWS
+    local cur = self:statsView()
+    local idx = 1
+    for i, v in ipairs(views) do if v == cur then idx = i break end end
+    idx = (idx - 1 + dir) % #views + 1
+    self.plugin.settings.stats_view = views[idx]
+    self.plugin:saveSettings()
+    UIManager:setDirty(self, "ui", self.stats_dimen)
 end
 
 -- Friendlier names for a few actions in the … menu
@@ -884,13 +955,22 @@ end
 
 function KoboToolbarWidget:inSlider(pos)
     local s = self.slider
-    if not s or not pos then return false end
+    if not s or not pos or self.stats_open then return false end
     local grow = S(10)
     return pos.x >= s.x0 - s.r and pos.x <= s.x1 + s.r and pos.y >= s.y - grow and pos.y < s.y + s.h + grow
 end
 
 function KoboToolbarWidget:inPanels(pos)
+    if self.stats_open then
+        return inside(pos, self.top_dimen) or inside(pos, self.stats_dimen)
+    end
     return inside(pos, self.top_dimen) or inside(pos, self.bottom_dimen) or inside(pos, self.rects.pill)
+end
+
+function KoboToolbarWidget:statsButtonAt(pos)
+    for _i, br in ipairs(self.button_rects or {}) do
+        if br.button.id == "stats" and inside(pos, br.rect) then return true end
+    end
 end
 
 function KoboToolbarWidget:onHudGesture(_args, ev)
@@ -902,6 +982,17 @@ function KoboToolbarWidget:onHudGesture(_args, ev)
             self:openMenuFromSwipe(ev)
             return true
         end
+    end
+    -- long-press on ılı: KOReader's own book statistics
+    if g == "hold" and not self.dragging and self:statsButtonAt(pos) then
+        self:openKOReaderStats()
+        return true
+    end
+    -- swipe left / right on the stats panel: the other chart
+    if g == "swipe" and self.stats_open and inside(pos, self.stats_dimen) then
+        if ev.direction == "west" then self:cycleStatsView(1)
+        elseif ev.direction == "east" then self:cycleStatsView(-1) end
+        return true
     end
     if g == "touch" then
         if self:inSlider(pos) then
@@ -936,6 +1027,15 @@ function KoboToolbarWidget:onTap(pos)
         return
     end
     local r = self.rects
+    if self.stats_open and inside(pos, self.stats_dimen) then
+        local sr = self.stats_rects or {}
+        if inside(pos, sr.prev) then
+            self:cycleStatsView(-1)
+        elseif inside(pos, sr.next) or inside(pos, sr.chart) then
+            self:cycleStatsView(1)
+        end
+        return
+    end
     if inside(pos, r.pill) then
         self.preview_page = nil
         self.plugin:goToOrigin()
@@ -957,7 +1057,7 @@ function KoboToolbarWidget:onTap(pos)
         end
         return
     end
-    if inside(pos, self.bottom_dimen) then
+    if inside(pos, self.bottom_dimen) and not self.stats_open then
         local ui = self.ui
         if inside(pos, r.info) then
             self:cycleInfoMode()

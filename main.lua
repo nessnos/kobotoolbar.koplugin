@@ -70,6 +70,8 @@ local DEFAULTS = {
     show_ticks = false,
     battery_pct = false,
     show_wifi = true,
+    stats_button = "panel", -- ılı opens: "panel" (Kobo's stats under the toolbar) or "koreader" (book statistics)
+    stats_view = "chapters",
 }
 
 -- Built-in toolbar buttons, in Kobo's order.
@@ -845,6 +847,15 @@ function KoboToolbar:buildSettingsItems()
             sub_item_table = info_items,
         },
         toggle(_("Show chapter marks on the slider"), "show_ticks"),
+        {
+            text = _("Statistics button opens Kobo's stats panel"),
+            help_text = _("On: the ılı button shows Kobo's reading stats under the toolbar (this chapter, next chapter, this book). Off: it opens KOReader's book statistics. A long-press on the button always opens KOReader's book statistics."),
+            checked_func = function() return self.settings.stats_button ~= "koreader" end,
+            callback = function()
+                self.settings.stats_button = self.settings.stats_button == "koreader" and "panel" or "koreader"
+                self:saveSettings()
+            end,
+        },
     }
 end
 
