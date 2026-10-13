@@ -637,9 +637,10 @@ function KoboToolbarWidget:getInfoLine(page)
         local n = chapter_left + 1
         return T(N_("1 page left in chapter", "%1 pages left in chapter", n), n)
     elseif mode == "chapter_time" then
-        return T(_("%1 left in chapter"), koboDuration((chapter_left + 1) * avg))
+        -- time: pages after this one × average time per page, like KOReader's footer and Bookends
+        return T(_("%1 left in chapter"), koboDuration(chapter_left * avg))
     elseif mode == "book_time" then
-        return T(_("%1 left in book"), koboDuration((book_left + 1) * avg))
+        return T(_("%1 left in book"), koboDuration(book_left * avg))
     elseif mode == "percent" then
         return T(_("%1% read"), math.floor(page / total * 100))
     end

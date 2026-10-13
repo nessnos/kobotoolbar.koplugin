@@ -126,6 +126,8 @@ function M.gather(ui, page)
     end
     d.chapter_pct = count > 0 and math.floor(done / count * 100) or 0
     d.chapter_pages_left = left + 1
+    -- times count the pages after this one, like KOReader's footer and Bookends
+    d.chapter_time_pages = left
 
     -- next chapter
     local nxt = d.has_toc and toc:getNextChapter(page)
@@ -135,6 +137,7 @@ function M.gather(ui, page)
 
     -- this book
     d.book_pages_left = doc:getTotalPagesLeft(page) + 1
+    d.book_time_pages = doc:getTotalPagesLeft(page)
 
     -- the chapters chart: one entry per chapter { pages, state }
     d.chapters = M.chapterList(ui, ticks, page, total)
@@ -308,7 +311,7 @@ function M.paint(bb, ui, page, y0, view)
     -- time (or pages) left in this chapter
     local num, label
     if d.avg then
-        num, label = koboTime(d.chapter_pages_left * d.avg,
+        num, label = koboTime(d.chapter_time_pages * d.avg,
             function(n) return N_("minute to go", "minutes to go", n) end,
             function(n) return N_("hour to go", "hours to go", n) end)
     else
@@ -412,7 +415,7 @@ function M.paint(bb, ui, page, y0, view)
             end
         end
         if d.avg then
-            right_num, right_label = koboTime(d.book_pages_left * d.avg,
+            right_num, right_label = koboTime(d.book_time_pages * d.avg,
                 function(k) return N_("minute to go", "minutes to go", k) end,
                 function(k) return N_("hour to go", "hours to go", k) end)
         else
